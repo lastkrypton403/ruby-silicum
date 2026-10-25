@@ -1,0 +1,6 @@
+*.o
+*.elf
+fbtest/Image
+recon-*/
+dt/
+dt.tar
