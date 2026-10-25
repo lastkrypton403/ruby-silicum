@@ -1,0 +1,51 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fbtest:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        stride: [1080, 1088]
+        order: [xrgb, rgba]
+    name: fbtest (stride ${{ matrix.stride }}, ${{ matrix.order }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Build
+        working-directory: fbtest
+        run: |
+          if [ "${{ matrix.order }}" = "rgba" ]; then export PIXEL_RGBA=1; fi
+          make STRIDE_PX=${{ matrix.stride }}
+
+      - name: Check arm64 Image header
+        working-directory: fbtest
+        run: |
+          python3 - <<'PY'
+          import struct, sys
+          d = open("Image", "rb").read()
+          assert len(d) > 64, "Image too small"
+          magic = d[0x38:0x3c]
+          assert magic == b"ARM\x64", f"bad magic {magic!r}"
+          img_size = struct.unpack_from("<Q", d, 0x10)[0]
+          assert img_size >= len(d), f"image_size {img_size} < file {len(d)}"
+          print(f"ok: {len(d)} bytes, image_size field {img_size}")
+          PY
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: fbtest-stride${{ matrix.stride }}-${{ matrix.order }}
+          path: |
+            fbtest/Image
+            fbtest/fbtest.elf
