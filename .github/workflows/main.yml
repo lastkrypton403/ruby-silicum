@@ -17,22 +17,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Locate fbtest sources
+        id: loc
+        run: |
+          # Find the folder that holds the stub's files, wherever it sits in the repo.
+          dir=""
+          for f in $(find . -name start.S -not -path './.git/*'); do
+            d=$(dirname "$f")
+            if [ -f "$d/main.c" ] && [ -f "$d/link.ld" ] && [ -f "$d/Makefile" ]; then
+              dir="$d"; break
+            fi
+          done
+          if [ -z "$dir" ]; then
+            echo "::error::fbtest sources not found. Repo contents:"
+            find . -not -path './.git/*' -not -path './.git' | sort | head -100
+            exit 1
+          fi
+          echo "Found fbtest at: $dir"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
       - name: Install cross toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: Build
-        working-directory: fbtest
+        working-directory: ${{ steps.loc.outputs.dir }}
         run: |
           if [ "${{ matrix.order }}" = "rgba" ]; then export PIXEL_RGBA=1; fi
           make STRIDE_PX=${{ matrix.stride }}
 
       - name: Check arm64 Image header
-        working-directory: fbtest
+        working-directory: ${{ steps.loc.outputs.dir }}
         run: |
           python3 - <<'PY'
-          import struct, sys
+          import struct
           d = open("Image", "rb").read()
           assert len(d) > 64, "Image too small"
           magic = d[0x38:0x3c]
@@ -47,5 +66,5 @@ jobs:
         with:
           name: fbtest-stride${{ matrix.stride }}-${{ matrix.order }}
           path: |
-            fbtest/Image
-            fbtest/fbtest.elf
+            ${{ steps.loc.outputs.dir }}/Image
+            ${{ steps.loc.outputs.dir }}/fbtest.elf
