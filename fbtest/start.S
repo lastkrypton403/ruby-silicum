@@ -1,6 +1,8 @@
 /* Silicum fbtest: tiny AArch64 stub packaged as an arm64 "Image".
- * Position independent (no absolute addresses except the framebuffer), so it
- * works wherever LK loads the kernel. Enters with MMU/caches off at EL1. */
+ * Position independent (no absolute addresses except fixed hardware/RAM
+ * addresses used by main.c). Enters with MMU/caches off at EL1.
+ * x0..x3 are passed through to main() untouched (x0 = DTB pointer per the
+ * arm64 boot protocol). */
     .section .text.boot, "ax"
     .global _start
 _start:
@@ -16,10 +18,8 @@ _start:
     .word   0                       /* res5 */
 1:
     msr     daifset, #0xf           /* mask all interrupts */
-    mrs     x0, CurrentEL
-    lsr     x0, x0, #2              /* x0 = exception level number */
-    adr     x1, _stack_top
-    mov     sp, x1
+    adr     x4, _stack_top          /* x4: do not clobber x0..x3 */
+    mov     sp, x4
     bl      main
 2:  wfe
     b       2b

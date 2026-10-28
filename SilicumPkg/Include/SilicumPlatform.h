@@ -14,7 +14,8 @@
 /* LK loads the kernel image at 0x40080000 (iomem: "Kernel code" starts here).
  * Free low RAM before the first reserved block (aee_debug_kinfo) is
  * 0x40000000..0x48080000. */
-#define SILICUM_FD_BASE              0x40080000ULL    /* VERIFY against boot.img header */
+#define SILICUM_FD_BASE              0x40080000ULL    /* boot.img v2 header kernel_addr (confirmed) */
+#define SILICUM_DTB_ADDR             0x47C80000ULL    /* boot.img tags_addr; LK-provided DT (expect in x0) */
 #define SILICUM_FD_SIZE              0x00400000ULL    /* 4 MiB, adjust to FD size */
 #define SILICUM_LOW_FREE_END         0x48080000ULL
 
@@ -59,7 +60,7 @@
 #define SILICUM_RAMOOPS_SIZE         0x000E0000ULL
 
 /* ---- Ramdisk placement chosen by LK (chosen/linux,initrd-*) ---- */
-#define SILICUM_INITRD_BASE          0x51100000ULL
+#define SILICUM_INITRD_BASE          0x51100000ULL    /* boot.img ramdisk_addr (confirmed) */
 
 /* ---- Fixed reserved regions from DT /reserved-memory (reg present).
  * UEFI must NOT hand these to the OS as conventional memory.
