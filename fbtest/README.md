@@ -50,3 +50,18 @@ The stub now reboots the phone itself 6 seconds after painting (PSCI SYSTEM_RESE
 - Screen: whole screen magenta first, then bars if the pattern base is scanned.
   Black the whole time while it reboots at ~6 s means code runs but LK has the
   display off or scans out elsewhere (needs display bring-up, a bigger task).
+
+## Log channel (pstore)
+
+The stub writes a log into the Android ramoops console zone (0x4811f000).
+After the phone is back in Android (if you flashed the stub to boot_a, put the
+stock boot image back first and boot normally):
+
+    adb shell su -c 'ls /sys/fs/pstore; cat /sys/fs/pstore/console-ramoops-0'
+    adb shell su -c 'dmesg | grep -i persistent_ram'
+
+Expected if it ran: "ST1", "main", el/dtb/midr values, "magenta done", ...
+"EXC" with idx/esr/elr/far means it crashed; send those values.
+If the log is missing, the stub never ran, or the memory did not survive
+the reset (then the dmesg persistent_ram lines still tell us what the
+kernel found: "found existing buffer", "no valid data", or "invalid").

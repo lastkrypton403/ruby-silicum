@@ -6,6 +6,10 @@
  *   - the phone reboots after ~14 s -> the stock watchdog fired instead
  *     (code did not run, or hung before the delay finished)
  *
+ * Log channel (works without a display): messages are appended to the
+ * Android ramoops console zone at 0x4811f000. After the phone is back in
+ * Android:  cat /sys/fs/pstore/console-ramoops-0   (or dmesg | grep persistent_ram)
+ *
  * Display, if it works:
  *   - whole reserved framebuffer region goes MAGENTA first (shows the display
  *     scans out somewhere in that region), then the test pattern is drawn at
@@ -32,6 +36,39 @@ typedef unsigned long u64;
 #else
 #define C(r,g,b) (0xFF000000u | ((u32)(r) << 16) | ((u32)(g) << 8) | (u32)(b))
 #endif
+
+
+/* ---- pstore (ramoops console zone) log ---- */
+#define PS_BASE     0x4811F000UL
+#define PS_DATA_MAX (0x40000UL - 12)
+
+static void plog(const char *s)
+{
+    volatile u32 *hdr = (volatile u32 *)PS_BASE;
+    volatile unsigned char *d = (volatile unsigned char *)(PS_BASE + 12);
+    u32 n = hdr[2];
+    while (*s && n < PS_DATA_MAX)
+        d[n++] = (unsigned char)*s++;
+    hdr[2] = n;
+    __asm__ volatile("dsb sy" ::: "memory");
+}
+
+static void plog_hex(const char *label, u64 v)
+{
+    char b[24];
+    int i = 0;
+    b[i++] = '0';
+    b[i++] = 'x';
+    for (int sh = 60; sh >= 0; sh -= 4) {
+        u32 dgt = (u32)((v >> sh) & 15);
+        b[i++] = (char)(dgt < 10 ? '0' + dgt : 'a' + dgt - 10);
+    }
+    b[i++] = '\n';
+    b[i] = 0;
+    plog(label);
+    plog("=");
+    plog(b);
+}
 
 static void fill(int x0, int y0, int x1, int y1, u32 c)
 {
@@ -79,9 +116,36 @@ static void psci_system_reset(void)
                        "memory");
 }
 
-void main(u64 el)
+void exception(u64 idx, u64 esr, u64 elr, u64 far)
 {
+    plog("EXC\n");
+    plog_hex("idx", idx);
+    plog_hex("esr", esr);
+    plog_hex("elr", elr);
+    plog_hex("far", far);
+    wait_seconds(2);
+    psci_system_reset();
+    for (;;)
+        __asm__ volatile("wfe");
+}
+
+void main(u64 el, u64 dtb)
+{
+    u64 midr, mpidr, sctlr, frq;
+    __asm__ volatile("mrs %0, midr_el1" : "=r"(midr));
+    __asm__ volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+    __asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+    __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
+    plog("main\n");
+    plog_hex("el", el);
+    plog_hex("dtb", dtb);
+    plog_hex("midr", midr);
+    plog_hex("mpidr", mpidr);
+    plog_hex("sctlr", sctlr);
+    plog_hex("cntfrq", frq);
+
     fill_region_magenta();
+    plog("magenta done\n");
 
     fill(0,    0, W,  400, C(255, 0, 0));       /* red   */
     fill(0,  400, W,  800, C(0, 255, 0));       /* green */
@@ -100,8 +164,11 @@ void main(u64 el)
     for (u64 i = 0; i < el; i++)
         fill(40 + (int)i * 140, 2150, 140 + (int)i * 140, 2250, C(255, 255, 0));
 
+    plog("pattern done, waiting 6s then PSCI reset\n");
     wait_seconds(6);
+    plog("calling reset\n");
     psci_system_reset();
+    plog("reset returned?!\n");
 
     for (;;)
         __asm__ volatile("wfe");
